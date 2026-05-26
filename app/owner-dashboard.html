@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Дашборд владельца Eaters</title>
+<style>
+body{margin:0;background:#f4f6fb;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Arial,sans-serif;color:#111827;padding:14px}
+.app{max-width:1180px;margin:0 auto}
+.hero{background:linear-gradient(135deg,#111827,#1d4ed8);color:white;border-radius:26px;padding:24px 18px;margin-bottom:14px}
+.card,.metric{background:white;border:1px solid #e5e7eb;border-radius:20px;padding:14px;margin-bottom:14px;box-shadow:0 10px 24px rgba(15,23,42,.07)}
+.grid{display:grid;gap:10px}
+@media(min-width:760px){.grid.kpi{grid-template-columns:repeat(4,1fr)}.grid.three{grid-template-columns:repeat(3,1fr)}}
+.metric span{display:block;color:#667085;font-size:13px;margin-bottom:6px}.metric strong{font-size:26px}
+.good{background:#dcfce7!important}.bad{background:#fee2e2!important}
+input,select{width:100%;border:1px solid #e5e7eb;border-radius:14px;padding:12px;font-size:15px}
+button{border:0;border-radius:15px;padding:12px 14px;font-weight:900;cursor:pointer}
+.secondary{background:#f1f5f9}.danger{background:#fee2e2;color:#b91c1c}
+.actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
+.tableWrap{overflow:auto;border:1px solid #e5e7eb;border-radius:16px}
+table{width:100%;border-collapse:collapse;min-width:900px;background:white}
+th,td{padding:11px;border-bottom:1px solid #e5e7eb;text-align:left;font-size:14px;vertical-align:top}
+th{background:#f8fafc;color:#475467;font-size:12px;text-transform:uppercase}
+.badge{display:inline-block;padding:5px 8px;border-radius:999px;font-size:12px;font-weight:900}
+.badge.good{background:#dcfce7;color:#15803d}.badge.bad{background:#fee2e2;color:#b91c1c}.badge.neutral{background:#f1f5f9;color:#475569}
+.alert{display:none;border-radius:16px;padding:12px;border:1px solid;margin-bottom:12px;font-weight:900}
+.alert.show{display:block}.alert.good{background:#dcfce7;color:#166534}.alert.bad{background:#fee2e2;color:#991b1b}
+.managerCard{border:1px solid #e5e7eb;border-radius:16px;padding:12px;background:#fff}
+.reportBox{font-family:monospace;white-space:pre-wrap;background:#0f172a;color:#e5e7eb;border-radius:16px;padding:12px;max-height:260px;overflow:auto;font-size:13px}
+.photos{display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:10px}.photoCard{border:1px solid #e5e7eb;border-radius:14px;padding:8px;background:#fff}
+.photos img{width:100%;border-radius:12px;border:1px solid #e5e7eb;cursor:pointer}
+.analysis{display:grid;gap:8px}.analysis div{padding:10px;border-radius:14px;background:#f8fafc;border:1px solid #e5e7eb}
+.modal{display:none;position:fixed;inset:0;background:rgba(0,0,0,.78);z-index:1000;align-items:center;justify-content:center;padding:20px}.modal.show{display:flex}.modal img{max-width:96vw;max-height:88vh;border-radius:16px}
+</style>
+</head>
+<body>
+<div class="app">
+<section class="hero"><h1>Дашборд владельца Eaters</h1><p>Исправленная версия: отчеты с фото хранятся в IndexedDB, не в localStorage.</p></section>
+<div id="alert" class="alert"></div>
+
+<section class="grid kpi">
+<div class="metric"><span>Смен</span><strong id="kpiShifts">0</strong></div>
+<div class="metric" id="metricRevenue"><span>Факт выручки</span><strong id="kpiRevenue">0 ₽</strong></div>
+<div class="metric"><span>План</span><strong id="kpiPlan">0 ₽</strong></div>
+<div class="metric" id="metricPlan"><span>План %</span><strong id="kpiPlanPercent">0%</strong></div>
+<div class="metric"><span>Средний чек-лист</span><strong id="kpiChecklist">0%</strong></div>
+<div class="metric"><span>Средний рейтинг</span><strong id="kpiRating">0</strong></div>
+<div class="metric"><span>Премии</span><strong id="kpiBonus">0 ₽</strong></div>
+<div class="metric" id="metricFails"><span>Провалов</span><strong id="kpiFails">0</strong></div>
+</section>
+
+<section class="card">
+<h2>Загрузить отчет</h2>
+<p>Загрузи JSON-файл менеджера. Фото сохраняются в IndexedDB, поэтому лимит гораздо выше.</p>
+<input type="file" accept="application/json,.json" onchange="importReportFile(event)">
+<div class="actions">
+<button class="secondary" onclick="exportJson()">Скачать базу JSON</button>
+<button class="secondary" onclick="exportCsv()">Скачать CSV</button>
+<button class="danger" onclick="clearAll()">Очистить базу</button>
+</div>
+</section>
+
+<section class="card">
+<h2>Фильтры</h2>
+<div class="grid three">
+<div><label>С даты</label><input id="fromDate" type="date" oninput="render()"></div>
+<div><label>По дату</label><input id="toDate" type="date" oninput="render()"></div>
+<div><label>Менеджер</label><select id="managerFilter" onchange="render()"><option value="">Все</option></select></div>
+</div>
+</section>
+
+<section class="card"><h2>Рейтинг менеджеров</h2><div id="managers" class="grid three"></div></section>
+<section class="card"><h2>AI-анализ</h2><div id="aiGlobal" class="analysis"></div></section>
+<section class="card"><h2>Смены</h2><div class="tableWrap"><table><thead><tr><th>Дата</th><th>Менеджер</th><th>Выручка</th><th>План</th><th>План %</th><th>Чек-лист</th><th>Рейтинг</th><th>Премия</th><th>Статус</th><th>Проблемы</th><th></th></tr></thead><tbody id="rows"></tbody></table></div></section>
+<section class="card"><h2>Просмотр отчета</h2><div id="selectedReport" class="reportBox">Выбери отчет в таблице.</div></section>
+<section class="card"><h2>Фото смен</h2><div class="grid three"><div><label>Фильтр по задаче</label><select id="photoTaskFilter" onchange="renderPhotoGallery()"><option value="">Все задачи</option></select></div></div><div id="selectedPhotos" class="photos" style="margin-top:12px"></div></section>
+</div>
+<div id="modal" class="modal" onclick="this.classList.remove('show')"><img id="modalImg"></div>
+
+<script>
+const DB_NAME="eaters_dashboard_indexeddb_v2";
+const STORE="reports";
+let dbConn=null;
+let reports=[];
+
+function openDb(){
+ return new Promise((resolve,reject)=>{
+  const req=indexedDB.open(DB_NAME,1);
+  req.onupgradeneeded=e=>{
+   const db=e.target.result;
+   if(!db.objectStoreNames.contains(STORE)) db.createObjectStore(STORE,{keyPath:"id"});
+  };
+  req.onsuccess=e=>{dbConn=e.target.result;resolve(dbConn)};
+  req.onerror=e=>reject(e.target.error);
+ });
+}
+function idbAll(){return new Promise((res,rej)=>{const r=dbConn.transaction(STORE,"readonly").objectStore(STORE).getAll();r.onsuccess=()=>res(r.result||[]);r.onerror=e=>rej(e.target.error)})}
+function idbPut(o){return new Promise((res,rej)=>{const r=dbConn.transaction(STORE,"readwrite").objectStore(STORE).put(o);r.onsuccess=()=>res();r.onerror=e=>rej(e.target.error)})}
+function idbDelete(id){return new Promise((res,rej)=>{const r=dbConn.transaction(STORE,"readwrite").objectStore(STORE).delete(id);r.onsuccess=()=>res();r.onerror=e=>rej(e.target.error)})}
+function idbClear(){return new Promise((res,rej)=>{const r=dbConn.transaction(STORE,"readwrite").objectStore(STORE).clear();r.onsuccess=()=>res();r.onerror=e=>rej(e.target.error)})}
+
+function money(v){return Math.round(Number(v)||0).toLocaleString("ru-RU")+" ₽"}
+function esc(s){return String(s??"").replaceAll("&","&amp;").replaceAll("<","&lt;").replaceAll(">","&gt;").replaceAll('"',"&quot;")}
+function set(id,v){document.getElementById(id).textContent=v}
+function show(t,type="good"){const a=document.getElementById("alert");a.textContent=t;a.className="alert show "+type;setTimeout(()=>a.className="alert",4500)}
+
+function normalizeReport(payload){
+ if(!payload||!String(payload.version||"").startsWith("eaters-report")) throw new Error("Это не файл отчета Eaters.");
+ const s=payload.summary||{},m=payload.meta||{};
+ return {
+  id:Date.now().toString(36)+Math.random().toString(36).slice(2),
+  date:m.date,restaurant:m.restaurant,manager:m.manager,
+  plan:s.planRevenue||0,fact:s.factRevenue||0,planPercent:s.revenuePercent||0,bonus:s.bonus||0,
+  checklistPercent:s.checklistPercent||0,rating:s.rating||0,failedTasksCount:(s.failedTasks||[]).length,
+  reviewFail:(payload.reviews||[]).some(r=>r.value==="fail"),
+  shiftFail:(s.shiftFails||[]).length>0,ideal:!!s.idealShift,
+  problems:[...(s.shiftFails||[]),...((s.failedTasks||[]).length?["Невыполненные задачи: "+s.failedTasks.length]:[])],
+  aiAnalysis:s.aiAnalysis||[],raw:payload.reportText||"",photos:payload.photos||{},createdAt:new Date().toISOString()
+ };
+}
+
+async function importReportFile(ev){
+ const file=ev.target.files&&ev.target.files[0]; if(!file) return;
+ const reader=new FileReader();
+ reader.onload=async e=>{
+  try{
+   const report=normalizeReport(JSON.parse(e.target.result));
+   await idbPut(report);
+   reports=await idbAll();
+   show("Отчет загружен.","good");
+   render();
+  }catch(err){show(err.message||"Ошибка загрузки.","bad")}
+  ev.target.value="";
+ };
+ reader.readAsText(file);
+}
+
+function filtered(){
+ const from=fromDate.value,to=toDate.value,m=managerFilter.value;
+ return reports.filter(r=>(!from||r.date>=from)&&(!to||r.date<=to)&&(!m||r.manager===m)).sort((a,b)=>String(b.date).localeCompare(String(a.date)));
+}
+function renderManagersOptions(){
+ const cur=managerFilter.value,ms=[...new Set(reports.map(r=>r.manager).filter(Boolean))].sort();
+ managerFilter.innerHTML='<option value="">Все</option>'+ms.map(m=>`<option value="${esc(m)}">${esc(m)}</option>`).join("");
+ managerFilter.value=cur;
+}
+function renderPhotoTaskOptions(){
+ const cur=photoTaskFilter.value,tasks=[...new Set(reports.flatMap(r=>Object.values(r.photos||{}).map(p=>p.task).filter(Boolean)))].sort();
+ photoTaskFilter.innerHTML='<option value="">Все задачи</option>'+tasks.map(t=>`<option value="${esc(t)}">${esc(t)}</option>`).join("");
+ photoTaskFilter.value=cur;
+}
+function render(){
+ renderManagersOptions();renderPhotoTaskOptions();
+ const list=filtered(),tp=list.reduce((a,r)=>a+r.plan,0),tf=list.reduce((a,r)=>a+r.fact,0),tb=list.reduce((a,r)=>a+r.bonus,0);
+ const avgC=list.length?list.reduce((a,r)=>a+r.checklistPercent,0)/list.length:0,avgR=list.length?list.reduce((a,r)=>a+r.rating,0)/list.length:0;
+ const fails=list.filter(r=>r.shiftFail||r.reviewFail||r.checklistPercent<80||(r.plan&&r.fact<r.plan*.8)).length,pp=tp?tf/tp*100:0;
+ set("kpiShifts",list.length);set("kpiRevenue",money(tf));set("kpiPlan",money(tp));set("kpiPlanPercent",pp.toFixed(1).replace(".",",")+"%");
+ set("kpiChecklist",avgC.toFixed(1).replace(".",",")+"%");set("kpiRating",Math.round(avgR));set("kpiBonus",money(tb));set("kpiFails",fails);
+ metricRevenue.className="metric "+(tf>=tp&&tp?"good":"");metricPlan.className="metric "+(tf>=tp&&tp?"good":(tp?"bad":""));metricFails.className="metric "+(fails?"bad":"good");
+ renderManagers(list);renderRows(list);renderAI(list);renderPhotoGallery();
+}
+function renderManagers(list){
+ const map={};
+ list.forEach(r=>{map[r.manager]=map[r.manager]||{count:0,fact:0,plan:0,rating:0,check:0,fails:0,bonus:0};const m=map[r.manager];m.count++;m.fact+=r.fact;m.plan+=r.plan;m.rating+=r.rating;m.check+=r.checklistPercent;m.bonus+=r.bonus;if(r.shiftFail||r.reviewFail||r.checklistPercent<80||(r.plan&&r.fact<r.plan*.8))m.fails++});
+ managers.innerHTML=Object.entries(map).sort((a,b)=>(b[1].rating/b[1].count)-(a[1].rating/a[1].count)).map(([name,m])=>`<div class="managerCard"><h3>${esc(name)}</h3><p><b>Смен:</b> ${m.count}</p><p><b>Рейтинг:</b> ${Math.round(m.rating/m.count)}/100</p><p><b>Чек-лист:</b> ${(m.check/m.count).toFixed(1).replace(".",",")}%</p><p><b>Выручка:</b> ${money(m.fact)} / ${money(m.plan)}</p><p><b>Премии:</b> ${money(m.bonus)}</p><p><b>Провалы:</b> ${m.fails}</p></div>`).join("")||'<p>Пока нет отчетов.</p>';
+}
+function renderRows(list){
+ rows.innerHTML=list.map(r=>{const status=r.ideal?'<span class="badge good">Идеальная</span>':(r.shiftFail||r.reviewFail||r.checklistPercent<80||(r.plan&&r.fact<r.plan*.8)?'<span class="badge bad">Провал</span>':'<span class="badge neutral">Ок</span>');return`<tr><td>${esc(r.date)}</td><td>${esc(r.manager)}</td><td>${money(r.fact)}</td><td>${money(r.plan)}</td><td>${Number(r.planPercent||0).toFixed(1).replace(".",",")}%</td><td>${Number(r.checklistPercent||0)}%</td><td>${Number(r.rating||0)}/100</td><td>${money(r.bonus)}</td><td>${status}</td><td>${r.problems?.length?r.problems.map(esc).join("<br>"):"—"}</td><td><button class="secondary" onclick="viewReport('${r.id}')">Открыть</button> <button class="danger" onclick="deleteReport('${r.id}')">Удалить</button></td></tr>`}).join("");
+}
+function renderAI(list){
+ let notes=[];const low=list.filter(r=>r.rating<80),review=list.filter(r=>r.reviewFail),fails=list.filter(r=>r.shiftFail),best=list.filter(r=>r.ideal);
+ if(!list.length)notes.push("Загрузите первый отчет, чтобы увидеть анализ.");
+ if(review.length)notes.push("Риск репутации: есть смены с не закрытыми отзывами.");
+ if(low.length>=3)notes.push("Системная проблема: есть несколько смен с рейтингом ниже 80.");
+ if(fails.length)notes.push("Операционный риск: обнаружены провальные смены.");
+ if(best.length)notes.push("Сильная сторона: есть идеальные смены, менеджеров можно отметить.");
+ if(!review.length&&list.length)notes.push("Отзывы в загруженных сменах в целом под контролем.");
+ aiGlobal.innerHTML=notes.map(n=>`<div>${esc(n)}</div>`).join("");
+}
+function renderPhotoGallery(){
+ const task=photoTaskFilter.value,manager=managerFilter.value,from=fromDate.value,to=toDate.value,photos=[];
+ reports.forEach(r=>{if(manager&&r.manager!==manager)return;if(from&&r.date<from)return;if(to&&r.date>to)return;Object.values(r.photos||{}).forEach(p=>{if(task&&p.task!==task)return;photos.push({...p,date:r.date,manager:r.manager})})});
+ selectedPhotos.innerHTML=photos.map(p=>`<div class="photoCard"><img src="${p.data}" onclick="openPhoto('${p.data}')"><small><b>${esc(p.task||"Фото")}</b><br>${esc(p.date||"")} · ${esc(p.manager||"")}<br>${esc(p.timeText||"")}</small></div>`).join("")||'<p>Фото пока нет.</p>';
+}
+function openPhoto(src){modalImg.src=src;modal.classList.add("show")}
+function viewReport(id){const r=reports.find(x=>x.id===id);selectedReport.textContent=r?r.raw:"Не найдено"}
+async function deleteReport(id){if(confirm("Удалить отчет?")){await idbDelete(id);reports=await idbAll();render()}}
+async function clearAll(){if(confirm("Удалить всю базу?")){await idbClear();reports=[];selectedReport.textContent="Выбери отчет в таблице.";render()}}
+function exportJson(){download("eaters-dashboard-base.json",JSON.stringify(reports,null,2),"application/json")}
+function exportCsv(){const h=["date","manager","restaurant","plan","fact","planPercent","checklistPercent","rating","bonus","failedTasksCount","reviewFail","shiftFail","ideal","problems"];download("eaters-dashboard.csv",[h.join(";")].concat(reports.map(r=>h.map(x=>`"${String(Array.isArray(r[x])?r[x].join(", "):r[x]??"").replaceAll('"','""')}"`).join(";"))).join("\n"),"text/csv;charset=utf-8")}
+function download(n,t,type){const b=new Blob([t],{type}),a=document.createElement("a");a.href=URL.createObjectURL(b);a.download=n;a.click()}
+async function init(){try{await openDb();reports=await idbAll();render()}catch(e){show("Ошибка IndexedDB: "+e.message,"bad")}}
+init();
+</script>
+</body>
+</html>
